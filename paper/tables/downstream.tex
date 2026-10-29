@@ -1,0 +1,15 @@
+\begin{tabular}{l ccc}
+\toprule
+Training labels & Uniform & Class-pair & Clustered \\
+\midrule
+No cleaning & 0.805 $\pm$ 0.025 & 0.789 $\pm$ 0.022 & 0.759 $\pm$ 0.027 \\
+\midrule
+Remove top-$n$: neighbour vote & 0.815 $\pm$ 0.020 & 0.807 $\pm$ 0.024 & 0.740 $\pm$ 0.027 \\
+Remove top-$n$: SC, random CV & 0.807 $\pm$ 0.016 & 0.781 $\pm$ 0.011 & 0.758 $\pm$ 0.015 \\
+Remove top-$n$: SC, spatial CV & 0.798 $\pm$ 0.020 & 0.778 $\pm$ 0.012 & 0.759 $\pm$ 0.013 \\
+Remove top-$n$: smoothed SC, spatial CV (ours) & 0.804 $\pm$ 0.018 & 0.779 $\pm$ 0.016 & 0.763 $\pm$ 0.013 \\
+\midrule
+Oracle: remove all corrupted & 0.810 $\pm$ 0.019 & 0.810 $\pm$ 0.019 & 0.810 $\pm$ 0.020 \\
+Oracle: all labels correct & 0.812 $\pm$ 0.015 & 0.812 $\pm$ 0.015 & 0.812 $\pm$ 0.015 \\
+\bottomrule
+\end{tabular}

@@ -1,0 +1,15 @@
+\begin{tabular}{lll ccc}
+\toprule
+Detector & Features & CV & Uniform & Class-pair & Clustered \\
+\midrule
+Neighbour vote & -- & -- & 0.813 $\pm$ 0.014 & 0.613 $\pm$ 0.003 & 0.234 $\pm$ 0.021 \\
+Self-confidence & spectral & random & 0.908 $\pm$ 0.011 & 0.535 $\pm$ 0.008 & 0.513 $\pm$ 0.038 \\
+Self-confidence & spectral & spatial & 0.902 $\pm$ 0.014 & 0.519 $\pm$ 0.021 & 0.543 $\pm$ 0.061 \\
+Smoothed SC (ours) & spectral & random & 0.944 $\pm$ 0.011 & 0.630 $\pm$ 0.023 & 0.614 $\pm$ 0.053 \\
+Smoothed SC (ours) & spectral & spatial & 0.939 $\pm$ 0.009 & 0.610 $\pm$ 0.023 & \textbf{0.653 $\pm$ 0.072} \\
+Self-confidence & spectral + x,y & random & 0.931 $\pm$ 0.009 & 0.579 $\pm$ 0.019 & 0.427 $\pm$ 0.045 \\
+Self-confidence & spectral + x,y & spatial & 0.910 $\pm$ 0.013 & 0.523 $\pm$ 0.019 & 0.519 $\pm$ 0.061 \\
+Smoothed SC (ours) & spectral + x,y & random & \textbf{0.957 $\pm$ 0.008} & \textbf{0.672 $\pm$ 0.033} & 0.478 $\pm$ 0.063 \\
+Smoothed SC (ours) & spectral + x,y & spatial & 0.940 $\pm$ 0.007 & 0.607 $\pm$ 0.025 & 0.588 $\pm$ 0.067 \\
+\bottomrule
+\end{tabular}
