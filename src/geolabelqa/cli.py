@@ -34,7 +34,7 @@ def _audit(args) -> int:
     features = args.features.split(",") if args.features else [
         c for c in df.columns if c not in reserved and pd.api.types.is_numeric_dtype(df[c])
     ]
-    auditor = LabelAuditor(block_size=args.block_size, k=args.k)
+    auditor = LabelAuditor(block_size=args.block_size, k=args.k, cv=args.cv)
     report = auditor.audit(df[features].to_numpy(), df[args.label].to_numpy(), df[[args.x, args.y]].to_numpy())
     if args.output:
         report.to_csv(args.output, index=False)
@@ -75,7 +75,8 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--y", required=True, help="y / northing column (projected units)")
     a.add_argument("--label", required=True)
     a.add_argument("--features", help="comma-separated feature columns (default: all other numeric columns)")
-    a.add_argument("--block-size", type=float, default=10.0)
+    a.add_argument("--cv", choices=("random", "spatial"), default="random", help="fold design (see the paper)")
+    a.add_argument("--block-size", type=float, default=10.0, help="spatial block side, used with --cv spatial")
     a.add_argument("--k", type=int, default=10)
     a.add_argument("--top", type=int, default=15)
     a.add_argument("-o", "--output")

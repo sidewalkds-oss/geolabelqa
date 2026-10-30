@@ -115,3 +115,10 @@ def test_label_auditor_ranks_errors_first(ds):
     assert report["suspicion"].is_monotonic_decreasing
     top = report["index"].to_numpy()[: flip.sum()]
     assert flip[top].mean() > 3 * flip.mean()
+
+
+def test_transferability_gap(ds):
+    gap = LabelAuditor(model=small_rf()).transferability_gap(ds.X, ds.y, ds.coords)
+    assert set(gap) == {"random", "spatial", "gap"}
+    assert gap["gap"] == pytest.approx(gap["random"] - gap["spatial"])
+    assert 0.5 < gap["random"] <= 1.0

@@ -1,0 +1,19 @@
+\begin{tabular}{l ccc}
+\toprule
+Comparison ($a$ vs $b$) & Uniform & Class-pair & Clustered \\
+\midrule
+\multicolumn{4}{l}{\textit{Synthetic}} \\
+Spatial vs random CV (SC, +x,y) & -0.022 (0/15, $<$0.001) & -0.049 (0/15, $<$0.001) & +0.066 (15/15, $<$0.001) \\
+Smoothed vs raw SC (spatial CV, +x,y) & +0.029 (15/15, $<$0.001) & +0.085 (15/15, $<$0.001) & +0.070 (15/15, $<$0.001) \\
+Smoothed vs raw SC (spatial CV, spectral) & +0.038 (15/15, $<$0.001) & +0.084 (15/15, $<$0.001) & +0.106 (15/15, $<$0.001) \\
+Smoothed vs raw SC (random CV, spectral) & +0.037 (15/15, $<$0.001) & +0.099 (15/15, $<$0.001) & +0.098 (15/15, $<$0.001) \\
+Smoothed SC + spatial CV vs standard CL & +0.031 (15/15, $<$0.001) & +0.079 (15/15, $<$0.001) & +0.128 (15/15, $<$0.001) \\
+\midrule
+\multicolumn{4}{l}{\textit{Real scenes}} \\
+Spatial vs random CV (SC, +x,y) & -0.306 (0/10, 0.002) & -0.374 (0/10, 0.002) & -0.060 (3/10, 0.160) \\
+Smoothed vs raw SC (spatial CV, +x,y) & +0.041 (7/10, 0.049) & +0.014 (10/10, 0.002) & +0.010 (7/10, 0.049) \\
+Smoothed vs raw SC (spatial CV, spectral) & +0.056 (9/10, 0.006) & +0.012 (10/10, 0.002) & +0.010 (8/10, 0.014) \\
+Smoothed vs raw SC (random CV, spectral) & +0.034 (10/10, 0.002) & +0.095 (10/10, 0.002) & +0.031 (8/10, 0.027) \\
+Smoothed SC + spatial CV vs standard CL & -0.249 (0/10, 0.002) & -0.236 (0/10, 0.002) & -0.051 (3/10, 0.322) \\
+\bottomrule
+\end{tabular}

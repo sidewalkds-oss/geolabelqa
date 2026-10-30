@@ -133,11 +133,16 @@ def inject_noise(
     n_classes: int = len(CLASSES),
     cluster_radius: float = 3.0,
     seed: int | None = None,
+    partner: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Corrupt a fraction ``rate`` of labels under the given noise regime.
 
+    ``partner[j]`` is the look-alike class that class ``j`` is relabelled to by
+    the "pair" and "clustered" regimes (default: ``CONFUSION_PARTNER``).
+
     Returns ``(noisy_labels, is_noisy)``.
     """
+    partner = CONFUSION_PARTNER if partner is None else np.asarray(partner)
     if noise_type not in NOISE_TYPES:
         raise ValueError(f"noise_type must be one of {NOISE_TYPES}, got {noise_type!r}")
     if not 0.0 <= rate < 1.0:
@@ -156,7 +161,7 @@ def inject_noise(
 
     elif noise_type == "pair":
         flip[rng.choice(n, size=target, replace=False)] = True
-        noisy[flip] = CONFUSION_PARTNER[y[flip]]
+        noisy[flip] = partner[y[flip]]
 
     else:  # clustered
         # Grow circular "bad annotator" patches until the target rate is met.
@@ -167,6 +172,6 @@ def inject_noise(
             new = np.flatnonzero(inside & ~flip)
             new = new[: target - flip.sum()]
             flip[new] = True
-        noisy[flip] = CONFUSION_PARTNER[y[flip]]
+        noisy[flip] = partner[y[flip]]
 
     return noisy, flip

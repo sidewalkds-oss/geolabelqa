@@ -202,6 +202,106 @@ def table_block_size(abl: pd.DataFrame) -> str:
                       *rows, r"\bottomrule", r"\end{tabular}"])
 
 
+REAL_CONFIGS = [  # (features, detector, cv, label)
+    ("-", "neighbour_vote", "-", "Neighbour vote"),
+    ("spectral", "self_confidence", "random", "SC, random CV"),
+    ("spectral", "self_confidence", "spatial", "SC, spatial CV"),
+    ("spectral", "smoothed_sc", "random", "Smoothed SC, random CV"),
+    ("spectral", "smoothed_sc", "spatial", "Smoothed SC, spatial CV"),
+    ("spectral+xy", "self_confidence", "random", "SC, random CV, +x,y"),
+    ("spectral+xy", "self_confidence", "spatial", "SC, spatial CV, +x,y"),
+    ("spectral+xy", "smoothed_sc", "random", "Smoothed SC, random CV, +x,y"),
+    ("spectral+xy", "smoothed_sc", "spatial", "Smoothed SC, spatial CV, +x,y"),
+]
+SCENE_LABEL = {"indian_pines": "Indian Pines", "pavia_university": "Pavia University"}
+
+
+def table_real(real: pd.DataFrame) -> tuple[str, str]:
+    """AP per scene and noise regime on the real hyperspectral scenes."""
+    noises = ("uniform", "pair", "clustered")
+    tex = [r"\begin{tabular}{l ccc}", r"\toprule", r"Detector & Uniform & Class-pair & Clustered \\"]
+    md = ["| Scene | Detector | Uniform | Class-pair | Clustered |", "|---|---|---|---|---|"]
+    for scene in real.scene.unique():
+        sub = real[real.scene == scene]
+        means = {n: [sub[(sub.noise == n) & (sub.features == fs) & (sub.detector == dt) & (sub.cv == cv)].ap.mean()
+                     for fs, dt, cv, _ in REAL_CONFIGS] for n in noises}
+        best = {n: int(np.nanargmax(means[n])) for n in noises}
+        tex += [r"\midrule", rf"\multicolumn{{4}}{{l}}{{\textit{{{SCENE_LABEL[scene]}}}}} \\"]
+        for i, (fs, dt, cv, label) in enumerate(REAL_CONFIGS):
+            cells = []
+            for n in noises:
+                r = sub[(sub.noise == n) & (sub.features == fs) & (sub.detector == dt) & (sub.cv == cv)].ap
+                cell = fmt(r.mean(), r.std())
+                cells.append(rf"\textbf{{{cell}}}" if best[n] == i else cell)
+            tex.append(f"{label} & " + " & ".join(cells) + r" \\")
+            md.append(f"| {SCENE_LABEL[scene]} | {label} | " + " | ".join(
+                f"{'**' if best[n] == i else ''}{means[n][i]:.3f}{'**' if best[n] == i else ''}" for n in noises) + " |")
+    tex += [r"\bottomrule", r"\end{tabular}"]
+    return "\n".join(tex), "\n".join(md)
+
+
+def table_real_downstream(down: pd.DataFrame) -> str:
+    methods = [("no_cleaning", "No cleaning"),
+               ("remove:neighbour_vote|-", "Remove top-$n$: neighbour vote"),
+               ("remove:self_confidence|random", "Remove top-$n$: SC, random CV"),
+               ("remove:smoothed_sc|spatial", "Remove top-$n$: smoothed SC, spatial CV"),
+               ("oracle_remove_noisy", "Oracle: remove all corrupted"),
+               ("oracle_clean_labels", "Oracle: all labels correct")]
+    noises = ("uniform", "pair", "clustered")
+    tex = [r"\begin{tabular}{l ccc}", r"\toprule", r"Training labels & Uniform & Class-pair & Clustered \\"]
+    for scene in down.scene.unique():
+        sub = down[down.scene == scene]
+        tex += [r"\midrule", rf"\multicolumn{{4}}{{l}}{{\textit{{{SCENE_LABEL[scene]}}}}} \\"]
+        for key, name in methods:
+            cells = [sub[(sub.noise == n) & (sub.method == key)].macro_f1 for n in noises]
+            tex.append(f"{name} & " + " & ".join(fmt(c.mean(), c.std()) for c in cells) + r" \\")
+    tex += [r"\bottomrule", r"\end{tabular}"]
+    return "\n".join(tex)
+
+
+def paired_test(df: pd.DataFrame, a: tuple, b: tuple, keys: list[str]) -> tuple[float, int, int, float]:
+    """Median AP difference a - b, wins of a, number of pairs, Wilcoxon signed-rank p (two-sided)."""
+    from scipy.stats import wilcoxon
+
+    def pick(cfg):
+        fs, dt, cv = cfg
+        return df[(df.features == fs) & (df.detector == dt) & (df.cv == cv)].set_index(keys).ap
+
+    diff = (pick(a) - pick(b)).dropna()
+    p = wilcoxon(diff).pvalue if len(diff) > 0 and (diff != 0).any() else float("nan")
+    return float(diff.median()), int((diff > 0).sum()), len(diff), float(p)
+
+
+def table_stats(det: pd.DataFrame, real: pd.DataFrame | None) -> str:
+    comparisons = [
+        ("Spatial vs random CV (SC, +x,y)", ("spectral+xy", "self_confidence", "spatial"), ("spectral+xy", "self_confidence", "random")),
+        ("Smoothed vs raw SC (spatial CV, +x,y)", ("spectral+xy", "smoothed_sc", "spatial"), ("spectral+xy", "self_confidence", "spatial")),
+        ("Smoothed vs raw SC (spatial CV, spectral)", ("spectral", "smoothed_sc", "spatial"), ("spectral", "self_confidence", "spatial")),
+        ("Smoothed vs raw SC (random CV, spectral)", ("spectral", "smoothed_sc", "random"), ("spectral", "self_confidence", "random")),
+        ("Smoothed SC + spatial CV vs standard CL", ("spectral", "smoothed_sc", "spatial"), ("spectral", "self_confidence", "random")),
+    ]
+    sources = [("Synthetic", det, ["rate", "seed"])]
+    if real is not None:
+        sources.append(("Real scenes", real, ["scene", "seed"]))
+
+    def p_fmt(p):
+        return "--" if np.isnan(p) else (r"$<$0.001" if p < 0.001 else f"{p:.3f}")
+
+    rows = []
+    for source, df, keys in sources:
+        rows.append(r"\midrule")
+        rows.append(rf"\multicolumn{{4}}{{l}}{{\textit{{{source}}}}} \\")
+        for label, a, b in comparisons:
+            cells = []
+            for noise in ("uniform", "pair", "clustered"):
+                med, wins, n, p = paired_test(df[df.noise == noise], a, b, keys)
+                cells.append(f"{med:+.3f} ({wins}/{n}, {p_fmt(p)})")
+            rows.append(f"{label} & " + " & ".join(cells) + r" \\")
+    return "\n".join([r"\begin{tabular}{l ccc}", r"\toprule",
+                      r"Comparison ($a$ vs $b$) & Uniform & Class-pair & Clustered \\", *rows,
+                      r"\bottomrule", r"\end{tabular}"])
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--results", default=str(ROOT / "results"))
@@ -229,10 +329,21 @@ def main():
     (tabs / "cl_flags.tex").write_text(table_cl_flags(det, 0.2), encoding="utf-8")
     (tabs / "block_size.tex").write_text(table_block_size(abl_b), encoding="utf-8")
 
+    real = pd.read_csv(res / "real_detection.csv") if (res / "real_detection.csv").exists() else None
+    (tabs / "stats.tex").write_text(table_stats(det, real), encoding="utf-8")
+    real_md = ""
+    if real is not None:
+        real_tex, real_md = table_real(real)
+        (tabs / "real_detection.tex").write_text(real_tex, encoding="utf-8")
+        (tabs / "real_downstream.tex").write_text(
+            table_real_downstream(pd.read_csv(res / "real_downstream.csv")), encoding="utf-8")
+        real_md = f"\n## Real hyperspectral scenes, average precision (20% injected noise)\n\n{real_md}\n"
+
     n_seeds = det.seed.nunique()
     (res / "summary.md").write_text(
         f"## Label-error detection, average precision (20% noise, {n_seeds} seeds)\n\n{det_md}\n\n"
-        f"## Downstream macro-F1 on clean test labels (20% noise, features: spectral + x,y)\n\n{down_md}\n",
+        f"## Downstream macro-F1 on clean test labels (20% noise, features: spectral + x,y)\n\n{down_md}\n"
+        + real_md,
         encoding="utf-8",
     )
     print((res / "summary.md").read_text(encoding="utf-8"))

@@ -24,22 +24,26 @@
 Training labels for land-cover and other geospatial models are often wrong, and
 the errors are rarely independent. One annotator or one misleading image can
 corrupt every label in an area. We study how standard label-error detectors
-behave under such spatially clustered errors. On a controlled synthetic
-land-cover benchmark (six classes, 3{,}000 samples, five seeds) with uniform,
-class-pair and clustered noise, we find three things. First, the common
-neighbour-vote check is barely better than chance on clustered errors (average
-precision 0.23 at a 20\% error rate where chance is 0.20). Second, confident
-learning with random cross-validation is weakened when coordinates are used as
-features. Its average precision on clustered errors drops from 0.51 to 0.43, and
-spatial block cross-validation recovers it to 0.52, beating random CV in all 15
-clustered-noise runs. The price is a small loss when errors are independent.
-Third, a simple modification, averaging out-of-fold class probabilities over each
-sample's ten nearest spatial neighbours before scoring, improves average precision
-in all 180 runs (every noise regime, rate, seed, feature set and CV scheme). The best setting (spectral features, spatial CV,
-smoothing) reaches 0.65 on clustered errors. Removing the flagged samples,
-however, did not measurably improve a random forest's test accuracy at these noise
-levels, and we discuss why. The methods are released as \texttt{geolabelqa}, an
-open-source Python package that also validates annotation polygon geometry.
+behave under such spatially clustered errors, using a synthetic land-cover
+benchmark and two real hyperspectral scenes (Indian Pines and Pavia University)
+with injected uniform, class-pair and clustered noise. Three findings hold on all
+datasets. First, the common neighbour-vote check, near-perfect for isolated
+errors on the real scenes, is close to chance on clustered errors (average
+precision 0.22--0.28 at a 20\% error rate, where chance is 0.20). Second, a
+simple spatially smoothed variant of confident learning's self-confidence score,
+which averages out-of-fold class probabilities over each sample's ten nearest
+neighbours, improves average precision in 180 of 180 synthetic and 107 of 120
+real comparisons (Wilcoxon $p<0.05$ in every noise regime). Third, clustered
+errors remain hard: the best real-scene average precision is 0.31--0.41, and
+removing the flagged samples lowers downstream accuracy. A fourth finding does
+\emph{not} transfer. On synthetic data, spatial block cross-validation recovers
+clustered errors that random cross-validation hides (15 of 15 runs). On the
+real scenes it is worse in every regime, because held-out blocks there are hard
+to predict even with clean labels: accuracy drops by 24 points against 1 point on
+the synthetic landscape. We propose this random-versus-spatial accuracy gap as a
+diagnostic for choosing the fold design. The methods are released as
+\texttt{geolabelqa}, an open-source Python package that also validates
+annotation polygon geometry.
 \end{abstract}
 
 %=====================================================================
@@ -78,20 +82,30 @@ This is the label-auditing counterpart of a problem the mapping community knows
 well from model \emph{evaluation}. Random cross-validation on spatially
 autocorrelated data gives over-optimistic accuracy estimates, and spatial block
 cross-validation is the accepted remedy~\citep{roberts2017cross,valavi2019blockcv,ploton2020spatial,meyer2019importance}.
-We argue that the same remedy belongs in label auditing, and that one further step
-adds to it: smoothing out-of-fold predictions over geographic neighbours.
+We test whether that remedy carries over to label auditing. It does on a
+synthetic landscape, but not on two real scenes. The reason is instructive: on
+real data, spatial blocks hide whole fields whose spectra the model cannot
+predict from elsewhere, so the auditor loses more than the leakage it avoids. One
+further inexpensive step helps consistently on all data: smoothing out-of-fold
+predictions over geographic neighbours.
 
 \paragraph{Contributions.}
+To our knowledge, this is the first evaluation of label-error detectors for
+geolocated point samples under spatially clustered annotator noise, with
+spatially blocked out-of-fold predictions. Specifically:
 \begin{enumerate}
 \item A controlled benchmark that separates three noise regimes (uniform,
   class-pair and spatially clustered) on a synthetic land-cover task with known
-  ground truth (Section~\ref{sec:benchmark}).
-\item An empirical analysis showing when neighbour voting and random-CV
-  confident learning fail, and when spatial block CV restores detection
-  (Section~\ref{sec:results}).
-\item \emph{Smoothed self-confidence}: a simple, model-agnostic score that
-  averages out-of-fold class probabilities over a sample's spatial neighbours
-  before ranking (Section~\ref{sec:method}).
+  ground truth, and the same regimes injected into two real hyperspectral scenes
+  with expert ground truth (Section~\ref{sec:benchmark}).
+\item An empirical analysis, with paired significance tests, of when neighbour
+  voting and confident learning fail, and of when spatial block CV helps or
+  hurts. We trace the difference to a measurable random-versus-spatial accuracy
+  gap (Sections~\ref{sec:results} and~\ref{sec:real}).
+\item \emph{Smoothed self-confidence}: a simple, model-agnostic, spatially
+  smoothed variant of the self-confidence score. It averages out-of-fold class
+  probabilities over a sample's spatial neighbours before ranking
+  (Section~\ref{sec:method}).
 \item \texttt{geolabelqa}, an open-source Python package that implements the
   pipeline, together with a dependency-light validator for annotation polygons.
 \end{enumerate}
@@ -115,10 +129,35 @@ when samples are spatially dependent.
 \citet{mnih2012learning} trained road and building detectors from misregistered
 and incomplete map labels with noise-aware losses. \citet{pelletier2017effect}
 measured how random and systematic label noise degrade land-cover classification
-from satellite image time series. Systematic noise, where one class is
-consistently relabelled as another, hurt more than random noise at the same rate.
-Our class-pair and clustered regimes extend that systematic setting by adding
-spatial structure.
+from satellite image time series. Random forests tolerated substantial random
+noise, and systematic noise, where one class is consistently relabelled as
+another, was more damaging. \citet{mellor2015exploring} used the random-forest
+ensemble margin to find mislabelled land-cover samples, and
+\citet{santos2021quality} cleaned satellite time-series samples with
+self-organising maps and Bayesian inference in feature space. The work closest
+to ours is \citet{krober2026assessment}. They benchmark data-centric
+label-noise identification methods, including confident learning, on remote
+sensing datasets, but do not consider spatially structured noise or the
+construction of the folds. Crowdsourced land-cover labels vary in quality
+between contributors~\citep{see2013comparing}, which is one source of the
+regionally systematic errors we model. Our class-pair and clustered regimes
+extend the systematic setting of \citet{pelletier2017effect} by adding spatial
+structure.
+
+\paragraph{Spatial context in label cleaning.}
+For hyperspectral images, several methods use spatial context to detect or
+correct noisy labels. \citet{jiang2019hyperspectral} propagate labels over a
+superpixel-based spectral--spatial graph, and \citet{tu2020hyperspectral} weight
+distances between superpixels and pixels. These methods operate on dense image
+grids and assume that pixels in the same local region share a class. That
+assumption is reasonable for isolated errors but breaks down when the errors
+themselves fill a region, which is the regime we study. For semantic
+segmentation, \citet{tadokoro2025bayesian} model spatially correlated label
+noise with a latent Gaussian field. Smoothed self-confidence belongs to this
+spatial-smoothing lineage. It differs in operating on sparse point samples and
+in smoothing \emph{out-of-fold} predictions from spatially blocked models rather
+than labels or in-sample features, which is what keeps it informative when
+errors are clustered.
 
 \paragraph{Spatial cross-validation.}
 Spatial autocorrelation violates the independence that random K-fold assumes.
@@ -128,7 +167,9 @@ species-distribution modelling. \citet{ploton2020spatial} showed that
 random-CV accuracy for large-scale biomass maps collapsed under spatial
 validation. \citet{meyer2019importance} found that coordinates and other
 location-proxy predictors encourage models to reproduce training data instead of
-generalising. We carry these observations from evaluation over to label auditing.
+generalising. These works concern accuracy assessment. We found no prior use of
+spatially blocked folds to produce the out-of-fold predictions on which
+label-error detection relies, and carry the observations over to that setting.
 
 %=====================================================================
 \section{Method}
@@ -237,6 +278,27 @@ precision, recall and F1 of the confident-learning flags. For downstream impact 
 remove the $\rho n$ highest-scoring samples (the true error count, so every method
 gets the same review budget), retrain, and report macro-F1 on the clean test set.
 
+\paragraph{Real scenes.}
+To test whether the findings survive real spectra and real spatial structure, we
+repeat the protocol on two public hyperspectral scenes with expert ground-truth
+maps~\citep{ehu_scenes}. \emph{Indian Pines} (AVIRIS, $145\times145$ pixels at
+20\,m, 200 bands after water-absorption removal) is mostly agricultural, with
+classes laid out as whole fields. We keep the 9 classes with at least 400
+labelled pixels (9{,}234 pixels). \emph{Pavia University} (ROSIS, $610\times340$
+pixels at 1.3\,m, 103 bands) is urban, with 9 classes (42{,}776 labelled pixels).
+The copies we used match the published image sizes and every per-class pixel
+count. For each seed we draw 3{,}000 labelled pixels for auditing and 1{,}000 for
+testing. Coordinates are pixel centres in metres. The expert ground truth is
+treated as clean, and noise is injected at a 20\% rate. Because the look-alike
+pairs of real classes are not known in advance, each class's partner is the class
+that a random forest trained on clean labels most often confuses it with,
+estimated once per scene on a separate sample. Error discs and CV blocks scale
+with the scene extent $E$: disc radius $E/15$ (193\,m and 53\,m) and block side
+$E/5$ (580\,m and 159\,m). Features are the spectral bands, optionally plus
+coordinates, and downstream models use the spectral bands only. Real label errors
+in these scenes are unknown, so this is a semi-synthetic test: real features and
+landscapes, controlled noise.
+
 %=====================================================================
 \section{Results}
 \label{sec:results}
@@ -285,10 +347,10 @@ The same comparison reverses when errors are independent. Random CV beat spatial
 CV in all 30 uniform and class-pair runs with coordinates, by 0.02 AP (uniform)
 and 0.06 AP (class-pair) at 20\%. With random folds the model sees training
 samples from the same patch. That helps when those neighbours are correctly
-labelled, which is the case under independent noise. Spatial CV is therefore
-insurance: a small premium when errors are independent, a large payout when they
-are clustered. Because the error process is unknown in practice, we consider the
-premium worth paying.
+labelled, which is the case under independent noise. On this benchmark spatial CV
+therefore looks like insurance: a small premium when errors are independent, a
+large payout when they are clustered. Section~\ref{sec:real} shows that the
+premium is much larger on real scenes, where the payout disappears.
 
 \paragraph{Smoothing helps everywhere.}
 Smoothed self-confidence improved AP over raw self-confidence in all 180 runs
@@ -340,6 +402,106 @@ features (mean $\pm$ s.d.\ over 5 seeds).}
 \end{table}
 
 %=====================================================================
+\section{Results on real scenes}
+\label{sec:real}
+
+Table~\ref{tab:real} repeats the detection comparison on Indian Pines and Pavia
+University, and Table~\ref{tab:stats} gives paired Wilcoxon signed-rank tests for
+the key comparisons on both benchmarks.
+
+\begin{table}[t]
+\centering\small
+\caption{Average precision for ranking corrupted labels on the real scenes at a
+20\% injected error rate (mean $\pm$ s.d.\ over 5 seeds; chance $=0.20$). Bold marks
+the best entry per column and scene.}
+\label{tab:real}
+\resizebox{\linewidth}{!}{\input{tables/real_detection.tex}}
+\end{table}
+
+\begin{table}[t]
+\centering\small
+\caption{Paired comparisons of average precision at a 20\% error rate. Each cell
+gives the median difference $a-b$, the number of paired runs where $a$ wins, and
+the two-sided Wilcoxon signed-rank $p$-value. Synthetic pairs are
+3 rates $\times$ 5 seeds; real pairs are 2 scenes $\times$ 5 seeds.}
+\label{tab:stats}
+\resizebox{\linewidth}{!}{\input{tables/stats.tex}}
+\end{table}
+
+\paragraph{What replicates.}
+Neighbour voting behaves as on synthetic data, but more extremely. The real
+scenes are labelled as homogeneous fields and the samples are dense, so isolated
+errors are almost perfectly detected (AP 0.94--1.00 for uniform noise). Clustered
+errors, however, fall to AP 0.28 (Indian Pines) and 0.22 (Pavia), with AUROC 0.62
+and 0.53. Smoothing also replicates. It improved AP in 107 of 120 paired
+comparisons, and with spectral features and random CV the gains were $+0.03$,
+$+0.10$ and $+0.03$ for uniform, class-pair and clustered noise, all significant
+($p\le0.027$).
+
+\paragraph{What does not replicate.}
+Spatial block CV is worse than random CV on both real scenes in every regime. The
+losses are large and significant for independent errors ($-0.31$ and $-0.37$ AP,
+0 of 10 wins), and there is no significant difference for clustered errors
+($-0.06$, 3 of 10 wins, $p=0.16$). Adding coordinates under random CV did not hurt
+clustered-error detection on the real scenes either. It gave a small gain (Indian
+Pines $0.27\to0.29$, Pavia $0.37\to0.38$), unlike the drop on synthetic data.
+
+\paragraph{Why: block transferability.}
+Table~\ref{tab:transfer} reports the out-of-fold accuracy of the same classifier
+on \emph{clean} labels under each fold design. On the synthetic landscape a
+held-out 10\,km block is almost as predictable as a random sample (a 1-point
+drop), because each class has one spectral signature everywhere. On the real
+scenes accuracy drops by 24 points. Fields of the same crop, or roofs of the same
+material, differ spectrally from place to place, and the blocks remove whole
+fields. A model that cannot predict a held-out block's correct labels cannot
+single out its wrong ones, so the out-of-fold probabilities lose most of their
+discriminative value. The leakage that spatial CV removes is real, but on these
+scenes it costs less than the transfer that spatial CV gives up. The gap is cheap
+to measure before an audit, using the given labels, and we propose it as a
+diagnostic. When the gap is small, spatially blocked folds are the safer choice.
+When it is large, random folds with spatially smoothed scores are better.
+
+\begin{table}[t]
+\centering\small
+\caption{Out-of-fold accuracy of the random forest on clean labels under random
+and spatial block CV (3{,}000 samples, mean $\pm$ s.d.\ over 3 seeds).}
+\label{tab:transfer}
+\begin{tabular}{lccc}
+\toprule
+Dataset & Random CV & Spatial CV & Gap \\
+\midrule
+Synthetic (10\,km blocks) & 0.784 $\pm$ 0.024 & 0.774 $\pm$ 0.021 & 0.010 \\
+Indian Pines (580\,m blocks) & 0.838 $\pm$ 0.002 & 0.599 $\pm$ 0.038 & 0.239 \\
+Pavia University (159\,m blocks) & 0.874 $\pm$ 0.002 & 0.636 $\pm$ 0.018 & 0.238 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Clustered errors remain hard.}
+The best clustered-error AP was 0.31 on Indian Pines (smoothed self-confidence,
+random CV, with coordinates) and 0.41 on Pavia (smoothed, random CV, spectral
+only), against a chance level of 0.20. No method we tested detects regionally
+systematic errors reliably on real spectra.
+
+\paragraph{Downstream accuracy.}
+Table~\ref{tab:realdown} reports test macro-F1. Removing the top-$n$ suspicious
+samples \emph{lowered} accuracy under clustered noise for every detector. For
+example, on Indian Pines removal moved it from 0.719 to between 0.604 and 0.710,
+against 0.833 for removing exactly the corrupted samples. For class-pair noise on
+Indian Pines, removal by neighbour vote recovered almost all of the gap
+($0.816\to0.848$, against 0.851 for the oracle). Automatic removal helps only
+when detection is precise, which on these scenes means isolated errors.
+
+\begin{table}[t]
+\centering\small
+\caption{Test macro-F1 on clean labels after removing the top-$n$ suspicious
+training samples on the real scenes ($n$ = true error count, 20\% error rate,
+spectral features, mean $\pm$ s.d.\ over 5 seeds).}
+\label{tab:realdown}
+\resizebox{\linewidth}{!}{\input{tables/real_downstream.tex}}
+\end{table}
+
+%=====================================================================
 \section{Ablations}
 \label{sec:ablations}
 
@@ -382,40 +544,52 @@ spectral\,+\,x,y, mean $\pm$ s.d.\ over 5 seeds).}
 \section{Discussion and limitations}
 
 \paragraph{Practical recommendations.}
-(1) Do not rely on neighbour voting alone: it cannot see the errors that matter
-most in geospatial annotation. (2) Audit with spatial block CV, even though it is
-slightly worse when errors happen to be independent. (3) Keep coordinates and
-other location proxies out of the auditing model, even if the production model
-uses them~\citep{meyer2019importance}. (4) Smooth out-of-fold probabilities over a
-small spatial neighbourhood ($k\approx10$, $w=0.5$) before ranking. (5) Use the
-ranking to direct human review; at the precision reached here, automatic removal
-did not pay off.
+(1) Use neighbour voting as one signal, never alone. It is excellent for isolated
+errors in homogeneous, densely sampled data, and blind to clustered errors.
+(2) Smooth out-of-fold probabilities over a small spatial neighbourhood
+($k\approx10$, $w=0.5$) before ranking. This was the one change that helped on
+every dataset. (3) Choose the fold design by measuring the random-versus-spatial
+accuracy gap. Use spatial blocks only if held-out blocks remain predictable;
+otherwise use random folds. The \texttt{geolabelqa} auditor therefore defaults to
+random folds, with spatial blocking as an option. (4) Use the ranking to direct
+human review, not automatic removal. When flagged samples cluster in space,
+reviewing the whole surrounding region is a natural response to clustered errors,
+although we have not evaluated it.
 
 \paragraph{Limitations.}
-All results come from a synthetic benchmark. Its value is that the error process
-is known exactly, which real data rarely allows. But the landscape model, the
-spectral signatures and the disc-shaped error clusters are simplifications. Real
+The noise is injected, not observed: even on the real scenes, we treat expert
+ground truth as clean and corrupt it with simulated processes. Disc-shaped error
+clusters and a single look-alike partner per class are simplifications; real
 annotation errors may follow tile boundaries, image dates or class-specific
-difficulty. We used one classifier family (random forest) and one sample size, and
-did not tune block size or $k$ per dataset beyond the ablations shown. The next
-step is validation on public land-cover reference datasets with documented or
-re-verified label errors. A second is combining smoothing with confident
-learning's full noise-matrix estimation, rather than its ranking alone.
+difficulty. The hyperspectral scenes are small and densely labelled, unlike
+sparse field-survey samples over large regions, and the synthetic landscape
+turned out to be far more spatially transferable than either real scene. That is
+why the spatial-CV conclusion reversed, and it shows that synthetic benchmarks for
+this problem must be calibrated against real transferability. We used one
+classifier family (random forest) and one sample size, and fixed the block size
+and $k$ per scene rather than tuning them. The proposed transferability diagnostic
+is supported here by three datasets and is not yet a calibrated decision rule. It
+should be tested on more scenes, including datasets with documented real label
+errors.
 
 %=====================================================================
 \section{Conclusion}
 
-Spatially clustered label errors defeat the two most common audit checks for
-geospatial training data: neighbour voting and confident learning with random
-folds. Spatial block cross-validation restores model-based detection, and
-smoothing out-of-fold probabilities over spatial neighbours improves it further
-at no extra training cost. Both are implemented in \texttt{geolabelqa}, which also
-checks annotation geometry, and the full benchmark can be reproduced with two
-commands.
+Spatially clustered label errors defeat neighbour voting and remain hard for
+model-based detectors. Smoothing out-of-fold class probabilities over spatial
+neighbours is a cheap, consistent improvement on synthetic and real data alike.
+Spatial block cross-validation, the standard remedy for spatial leakage in model
+evaluation, helps label auditing only when held-out regions remain predictable.
+On two real hyperspectral scenes they did not, and random folds were better. We
+offer the random-versus-spatial accuracy gap as a simple way to tell the two
+situations apart. Everything is implemented in \texttt{geolabelqa}, which also
+checks annotation geometry.
 
 \paragraph{Reproducibility.}
-\texttt{python experiments/run\_benchmark.py} regenerates every CSV in
-\texttt{results/} (about 30 minutes on a laptop CPU), and
+\texttt{python experiments/run\_benchmark.py} regenerates the synthetic results
+(about 30 minutes on a laptop CPU). After downloading the two scenes,
+\texttt{python experiments/run\_real.py} and
+\texttt{python experiments/transferability.py} regenerate the real-scene results.
 \texttt{python experiments/make\_figures.py} regenerates every figure and table
 in this paper.
 

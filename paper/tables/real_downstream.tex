@@ -1,0 +1,21 @@
+\begin{tabular}{l ccc}
+\toprule
+Training labels & Uniform & Class-pair & Clustered \\
+\midrule
+\multicolumn{4}{l}{\textit{Indian Pines}} \\
+No cleaning & 0.851 $\pm$ 0.008 & 0.816 $\pm$ 0.006 & 0.719 $\pm$ 0.024 \\
+Remove top-$n$: neighbour vote & 0.848 $\pm$ 0.003 & 0.848 $\pm$ 0.008 & 0.710 $\pm$ 0.033 \\
+Remove top-$n$: SC, random CV & 0.837 $\pm$ 0.009 & 0.773 $\pm$ 0.007 & 0.665 $\pm$ 0.026 \\
+Remove top-$n$: smoothed SC, spatial CV & 0.808 $\pm$ 0.018 & 0.683 $\pm$ 0.020 & 0.604 $\pm$ 0.075 \\
+Oracle: remove all corrupted & 0.851 $\pm$ 0.008 & 0.851 $\pm$ 0.008 & 0.833 $\pm$ 0.016 \\
+Oracle: all labels correct & 0.858 $\pm$ 0.007 & 0.858 $\pm$ 0.007 & 0.858 $\pm$ 0.007 \\
+\midrule
+\multicolumn{4}{l}{\textit{Pavia University}} \\
+No cleaning & 0.849 $\pm$ 0.018 & 0.821 $\pm$ 0.014 & 0.770 $\pm$ 0.027 \\
+Remove top-$n$: neighbour vote & 0.846 $\pm$ 0.019 & 0.823 $\pm$ 0.030 & 0.688 $\pm$ 0.077 \\
+Remove top-$n$: SC, random CV & 0.837 $\pm$ 0.014 & 0.810 $\pm$ 0.015 & 0.735 $\pm$ 0.025 \\
+Remove top-$n$: smoothed SC, spatial CV & 0.772 $\pm$ 0.019 & 0.736 $\pm$ 0.026 & 0.715 $\pm$ 0.024 \\
+Oracle: remove all corrupted & 0.851 $\pm$ 0.014 & 0.851 $\pm$ 0.014 & 0.830 $\pm$ 0.024 \\
+Oracle: all labels correct & 0.857 $\pm$ 0.014 & 0.857 $\pm$ 0.014 & 0.857 $\pm$ 0.014 \\
+\bottomrule
+\end{tabular}

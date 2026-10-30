@@ -6,33 +6,27 @@
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Land-cover maps, building detectors and crop classifiers all depend on hand-labelled
+Land-cover maps, crop classifiers and building detectors all depend on hand-labelled
 training samples, and those labels are wrong more often than anyone would like.
-Worse, the mistakes are rarely random. One annotator misreads cropland as grassland
-across a whole tile, or an outdated basemap shifts every label in a district. Errors
-like these come in **spatial clusters**, and that defeats the two checks most teams
-rely on:
+The mistakes are rarely random. One annotator misreads cropland as grassland across a
+whole tile, or an outdated basemap shifts every label in a district. Errors like these
+come in **spatial clusters**, and the usual checks struggle with them.
 
-* **"Does it agree with its neighbours?"** fails because the neighbours carry the same mistake.
-* **"Does a model trained on the rest disagree with it?"** fails when cross-validation is
-  random: a model that sees coordinates (or spatially autocorrelated features) learns the
-  mistake from nearby training points and confirms it.
+`geolabelqa` ranks geolocated samples by how likely their label is wrong, and comes with
+a paper that tests what actually works, on a synthetic benchmark **and on two real
+hyperspectral scenes** (Indian Pines, Pavia University).
 
-`geolabelqa` packages the fix that the accompanying paper evaluates:
-
-1. **Spatial block cross-validation** for out-of-fold class probabilities, so a sample is
-   never judged by a model trained on its own neighbourhood.
-2. **Spatial smoothing of those probabilities** over each sample's *k* nearest neighbours,
-   which pools evidence from independent predictions instead of from shared labels.
-3. **Self-confidence ranking + confident-learning flags** (Northcutt et al., 2021) on the
-   smoothed probabilities.
-
-It also ships a dependency-light **GeoJSON polygon validator** (self-intersections, slivers,
-winding order, unclosed rings, holes outside shells, duplicates, missing labels) for
-checking annotation geometry before you check annotation classes.
+* **Smoothed self-confidence:** out-of-fold class probabilities, averaged over each
+  sample's *k* nearest spatial neighbours, then scored as 1 − p(given label). It was the
+  one change that helped on every dataset.
+* **Transferability check:** measures whether spatial block cross-validation will help
+  or hurt your audit, before you run it.
+* **Confident-learning flags** (Northcutt et al., 2021) and a neighbour-vote score for context.
+* A dependency-light **GeoJSON polygon validator** (self-intersections, slivers, winding
+  order, unclosed rings, holes outside shells, duplicates, missing labels).
 
 📄 **Paper:** [`paper/paper.tex`](paper/paper.tex), *Spatially Aware Label-Error Detection
-for Geospatial Training Data* (a PDF is built by CI on every push).
+for Geospatial Machine-Learning Training Data*. CI builds the PDF on every push.
 
 ---
 
@@ -54,7 +48,14 @@ Runtime dependencies: `numpy`, `scipy`, `scikit-learn`, `pandas`. No GDAL/GEOS n
 from geolabelqa import LabelAuditor
 
 # X: (n, n_features) e.g. Sentinel-2 bands/indices; coords: (n, 2) in a PROJECTED CRS
-report = LabelAuditor(block_size=10_000, k=10).audit(X, labels, coords)
+auditor = LabelAuditor(k=10)
+
+# Optional: should the audit use spatial block folds?
+print(auditor.transferability_gap(X, labels, coords))   # {'random': .., 'spatial': .., 'gap': ..}
+# Small gap (a few points)  -> LabelAuditor(cv="spatial", block_size=...)
+# Large gap                 -> keep the default random folds
+
+report = auditor.audit(X, labels, coords)
 report.head(20)          # most suspicious samples first
 report[report.cl_flag]   # confident-learning flags
 ```
@@ -65,10 +66,7 @@ report[report.cl_flag]   # confident-learning flags
 | `label` / `suggested_label` | given label and the model's best alternative |
 | `suspicion` | 0–1; 1 − smoothed out-of-fold probability of the given label |
 | `cl_flag` | flagged by the confident-learning rule |
-| `neighbour_disagreement` | share of *k* nearest neighbours with a different label (shown for context) |
-
-Set `block_size` larger than the range of spatial autocorrelation in your data (a
-variogram, or the typical size of a homogeneous field/patch, is a good guide).
+| `neighbour_disagreement` | share of *k* nearest neighbours with a different label |
 
 ### Command line
 
@@ -84,68 +82,78 @@ for an annotation repository.
 
 ## Results
 
-Synthetic 50 × 50 km land-cover benchmark: 6 classes, 3,000 training points,
-random-forest classifier, 5 seeds. Errors are injected as uniform, class-pair
-(look-alike classes) or spatially clustered (whole patches mislabelled).
-Reproduce it with `python experiments/run_benchmark.py && python experiments/make_figures.py`.
+Average precision for ranking corrupted labels at a 20% error rate (chance = 0.20),
+5 seeds, random-forest classifier. Real scenes use their expert ground truth with
+injected noise.
 
-**Detecting corrupted labels**: average precision at a 20% error rate (chance = 0.20).
-Features = spectral bands + x,y coordinates, a common geo-ML setup:
+| Detector | Synthetic, clustered | Indian Pines, clustered | Pavia, clustered | Indian Pines, uniform | Pavia, uniform |
+|---|---|---|---|---|---|
+| Neighbour vote | 0.234 | 0.279 | 0.222 | **0.998** | 0.944 |
+| Self-confidence, random CV (standard confident learning) | 0.513 | 0.268 | 0.370 | 0.940 | 0.963 |
+| Self-confidence, spatial CV | 0.543 | 0.225 | 0.338 | 0.636 | 0.595 |
+| **Smoothed self-confidence, random CV** (default) | 0.614 | 0.283 | **0.412** | 0.981 | **0.988** |
+| Smoothed self-confidence, spatial CV | **0.653** | 0.239 | 0.352 | 0.748 | 0.613 |
 
-| Detector | Uniform | Class-pair | Clustered |
-|---|---|---|---|
-| Neighbour vote | 0.813 | 0.613 | 0.234 |
-| Self-confidence, random CV (standard confident learning) | 0.931 | 0.579 | 0.427 |
-| Self-confidence, spatial block CV | 0.910 | 0.523 | 0.519 |
-| **Smoothed self-confidence, spatial block CV** (`LabelAuditor` default) | 0.940 | 0.607 | **0.588** |
+*Features: spectral only. The paper reports both feature sets, class-pair noise and more.*
 
-Findings:
+What the evidence says:
 
-- **Neighbour voting is near chance on clustered errors.** The neighbours share the mistake.
-- **Random CV + coordinates hides clustered errors.** The model learns the bad patch.
-  Spatial block CV beat random CV in **15/15** clustered-noise runs. It costs 0.02–0.06 AP
-  when errors are independent, so think of it as insurance.
-- **Smoothing improved AP in 180/180 runs** (all regimes, rates, seeds, feature sets and CV schemes).
-- Best clustered-noise result: spectral features only + spatial CV + smoothing, **AP 0.653**.
-  Keep coordinates out of the auditing model.
-- **Honest negative result:** removing the top-n flagged samples did *not* measurably
-  improve a random forest's test macro-F1 (clustered: 0.759 → 0.763, against 0.810 for an
-  oracle). Use the ranking to direct human review, not for automatic deletion.
+- **Smoothing helps:** it improved AP in 180/180 synthetic and 107/120 real comparisons
+  (Wilcoxon p < 0.05 in every noise regime).
+- **Neighbour voting is blind to clustered errors,** near chance on all three datasets, even
+  though it is near-perfect for isolated errors on the real scenes.
+- **Spatial CV is not a free win.** It beat random CV on synthetic clustered noise (15/15
+  runs) but lost on the real scenes. There, held-out blocks are hard to predict even with
+  clean labels: accuracy drops by **24 points**, against 1 point on the synthetic landscape.
+  `transferability_gap()` measures this for your data.
+- **Clustered errors remain hard,** with a best real-scene AP of 0.31–0.41. Removing flagged
+  samples *hurt* downstream accuracy under clustered noise, so use the ranking to direct
+  human review, not automatic deletion.
 
-Full tables, ablations (smoothing strength, block size) and discussion are in the paper.
-Raw results are in [`results/`](results/).
+## Reproducing the paper
 
-![Detection AP vs noise rate](paper/figures/fig2_ap_vs_rate_xy.png)
+```bash
+python experiments/run_benchmark.py     # synthetic benchmark (~30 min)
+python experiments/run_real.py          # real scenes (~30 min), needs data/ (below)
+python experiments/transferability.py   # clean-label random vs spatial CV accuracy
+python experiments/make_figures.py      # all figures and LaTeX tables
+```
+
+The real scenes are the Indian Pines (corrected) and Pavia University MATLAB files from the
+[UPV/EHU Hyperspectral Remote Sensing Scenes](https://ehu.eus/ccwintco/index.php/Hyperspectral_Remote_Sensing_Scenes)
+page. Place `Indian_pines_corrected.mat`, `Indian_pines_gt.mat`, `PaviaU.mat` and
+`PaviaU_gt.mat` in `data/`. The paper's runs used verified copies whose image sizes and
+per-class pixel counts match the published values.
 
 ## Repository layout
 
 ```
 src/geolabelqa/
-  auditor.py      LabelAuditor - the high-level API
+  auditor.py      LabelAuditor (audit + transferability_gap), the high-level API
   detectors.py    out-of-fold probabilities, self-confidence, CL flags, smoothing, neighbour vote
   spatial_cv.py   SpatialBlockKFold (with optional buffer)
+  scenes.py       loaders for the real hyperspectral scenes
   geometry.py     GeoJSON polygon validator
   synthetic.py    synthetic land-cover generator and noise models
   metrics.py      AUROC / AP / precision@N, flag precision/recall/F1
   cli.py          `geolabelqa` command
-experiments/      benchmark + figure/table generation
-results/          raw CSVs from the benchmark
+experiments/      benchmarks, transferability check, figure/table generation
+results/          raw CSVs from every experiment
 paper/            LaTeX source, figures, tables
 tests/            pytest suite
 ```
 
 ## Limitations
 
-The benchmark is synthetic. It controls the noise process exactly, which real
-data can't, but it can't stand in for real annotation campaigns. Validation on
-public land-cover reference sets with documented label errors is the obvious next
-step. See the paper's discussion section.
+The noise is injected, not observed. Even on the real scenes, expert ground truth is
+treated as clean. The transferability diagnostic is backed by three datasets and is not
+yet a calibrated decision rule. See the paper's limitations section.
 
 ## Citation
 
 ```bibtex
 @misc{omar2026geolabelqa,
-  title  = {Spatially Aware Label-Error Detection for Geospatial Training Data},
+  title  = {Spatially Aware Label-Error Detection for Geospatial Machine-Learning Training Data},
   author = {Omar, Kaisi},
   year   = {2026},
   url    = {https://github.com/sidewalkds-oss/geolabelqa}
