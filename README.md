@@ -25,8 +25,9 @@ hyperspectral scenes** (Indian Pines, Pavia University).
 * A dependency-light **GeoJSON polygon validator** (self-intersections, slivers, winding
   order, unclosed rings, holes outside shells, duplicates, missing labels).
 
-📄 **Paper:** [`paper/paper.tex`](paper/paper.tex), *Spatially Aware Label-Error Detection
-for Geospatial Machine-Learning Training Data*. CI builds the PDF on every push.
+📄 **Paper: [Read the PDF](paper/paper.pdf)**, *Spatially Aware Label-Error Detection for
+Geospatial Machine-Learning Training Data*. The LaTeX source is
+[`paper/paper.tex`](paper/paper.tex), and CI rebuilds the PDF on every push.
 
 ---
 
